@@ -71,10 +71,7 @@ func (p *Pool) Exit() {
 		return
 	}
 retry:
-	// 这里通知所有wait，并且抢锁
 	// 抢到锁的话，表示waiting的数量准确
-	// 抢不到的话表示被wait的goroutine抢到了，他们会去执行
-	p.cond.Broadcast()
 	p.lock.Lock()
 	if p.Waiting() > 0 {
 		goto retry
