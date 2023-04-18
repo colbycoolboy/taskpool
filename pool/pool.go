@@ -9,6 +9,11 @@ import (
 	"sync/atomic"
 )
 
+var (
+	OPEN  = 0
+	CLOSE = 1
+)
+
 type Pool struct {
 	running int32
 	lock    sync.Locker
@@ -17,6 +22,7 @@ type Pool struct {
 	cond    *sync.Cond
 	waiting int32
 
+	// 重启时可以使用，直接关闭无须操作
 	stopHeartbeat context.CancelFunc
 
 	options *Options
@@ -49,12 +55,36 @@ func BuildPool(options ...Option) (*Pool, error) {
 }
 
 func (p *Pool) Submit(task func()) error {
+	if p.IsClose() {
+		return fmt.Errorf("pool is close")
+	}
 	var w *poolWorker
 	if w = p.getWorker(); w == nil {
 		return fmt.Errorf("pool full")
 	}
 	w.task <- task
 	return nil
+}
+
+func (p *Pool) Exit() {
+	if !atomic.CompareAndSwapInt32(&p.state, int32(OPEN), int32(CLOSE)) {
+		return
+	}
+retry:
+	// 这里通知所有wait，并且抢锁
+	// 抢到锁的话，表示waiting的数量准确
+	// 抢不到的话表示被wait的goroutine抢到了，他们会去执行
+	p.cond.Broadcast()
+	p.lock.Lock()
+	if p.Waiting() > 0 {
+		goto retry
+	}
+	p.workers.clean()
+	p.lock.Unlock()
+}
+
+func (p *Pool) IsClose() bool {
+	return atomic.LoadInt32(&p.state) == int32(CLOSE)
 }
 
 func (p *Pool) Cap() int {
@@ -177,39 +207,3 @@ func (p *Pool) addRunning(t int) {
 func (p *Pool) addWaiting(t int) {
 	atomic.AddInt32(&p.waiting, int32(t))
 }
-
-/*
-var (
-	foodOk   = false
-	foodName = ""
-	rwMutex  = &sync.RWMutex{}
-	cond     = sync.NewCond(rwMutex.RLocker())
-)
-
-func makeFood() {
-	fmt.Print("start make food")
-	time.Sleep(3 * time.Second)
-	foodOk = true
-	foodName = "a"
-	fmt.Print("food ok")
-	cond.Broadcast()
-}
-
-func waitToEat() {
-	cond.L.Lock()
-	defer cond.L.Unlock()
-	for !foodOk {
-		cond.Wait()
-	}
-	fmt.Printf("eat food :%s", foodName)
-}
-
-func main() {
-	fmt.Println("vim-go")
-	for i := 0; i <= 3; i++ {
-		go waitToEat()
-	}
-	go makeFood()
-	time.Sleep(10 * time.Second)
-}
-*/

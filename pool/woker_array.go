@@ -46,6 +46,15 @@ func (wa *workArray) getWorker() *poolWorker {
 	return w
 }
 
+func (wa *workArray) clean() {
+	for i := 0; i < wa.len(); i++ {
+		wa.actives[i].task <- nil
+		wa.actives[i] = nil
+	}
+	wa.actives = wa.actives[:0]
+	return
+}
+
 func (wa *workArray) getExpiredWorker(t time.Duration) []*poolWorker {
 	l := wa.len()
 	if l == 0 {
