@@ -13,6 +13,7 @@ func (w *poolWorker) execute() {
 	go func() {
 		defer func() {
 			w.pool.addRunning(-1)
+			w.pool.cache.Put(w)
 			if p := recover(); p != nil {
 				if h := w.pool.options.PanicHandler; h != nil {
 					h(p)

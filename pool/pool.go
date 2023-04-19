@@ -26,13 +26,14 @@ type Pool struct {
 	stopHeartbeat context.CancelFunc
 
 	options *Options
+	cache   *sync.Pool
 }
 
 func BuildPool(options ...Option) (*Pool, error) {
 	opts := loadOptions(options...)
-	fmt.Println("pool size:%d", opts.Size)
-	fmt.Println("wait size:%d", opts.MaxWaitTaskNum)
-	fmt.Println("expire time:%d", opts.ExpireWorkerCleanInterval)
+	fmt.Println("pool size:", opts.Size)
+	fmt.Println("wait size:", opts.MaxWaitTaskNum)
+	fmt.Println("expire time:", opts.ExpireWorkerCleanInterval)
 
 	if opts.Size <= 0 {
 		return nil, fmt.Errorf("size less than 0")
@@ -45,6 +46,12 @@ func BuildPool(options ...Option) (*Pool, error) {
 
 	pool.workers = newWorkArray(int(opts.Size))
 	pool.cond = sync.NewCond(pool.lock)
+	pool.cache.New = func() interface{} {
+		return &poolWorker{
+			pool: pool,
+			task: make(chan func()),
+		}
+	}
 
 	var ctx context.Context
 	ctx, pool.stopHeartbeat = context.WithCancel(context.Background())
@@ -141,10 +148,7 @@ func (p *Pool) putWorker(worker *poolWorker) bool {
 
 func (p *Pool) getWorker() (w *poolWorker) {
 	newWorkerAndRun := func() {
-		w = &poolWorker{
-			pool: p,
-			task: make(chan func(), 0),
-		}
+		w = p.cache.Get().(*poolWorker)
 		w.execute()
 	}
 	p.lock.Lock()
