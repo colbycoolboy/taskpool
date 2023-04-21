@@ -49,5 +49,6 @@ func main() {
 			}
 		}()
 	}
+	taskPool.Exit()
 	time.Sleep(10 * time.Second)
 }

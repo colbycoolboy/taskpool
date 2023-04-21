@@ -42,6 +42,7 @@ func BuildPool(options ...Option) (*Pool, error) {
 	pool := &Pool{
 		lock:    &sync.Mutex{}, // 这里用cas最好
 		options: opts,
+		cache:   &sync.Pool{},
 	}
 
 	pool.workers = newWorkArray(int(opts.Size))
@@ -77,11 +78,14 @@ func (p *Pool) Exit() {
 	if !atomic.CompareAndSwapInt32(&p.state, int32(OPEN), int32(CLOSE)) {
 		return
 	}
-retry:
 	// 抢到锁的话，表示waiting的数量准确
 	p.lock.Lock()
-	if p.Waiting() > 0 {
-		goto retry
+	for {
+		if p.Waiting() == 0 {
+			break
+		}
+		p.cond.Signal()
+		p.cond.Wait()
 	}
 	p.workers.clean()
 	p.lock.Unlock()
