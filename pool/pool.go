@@ -108,7 +108,7 @@ func (p *Pool) Waiting() int {
 }
 
 func (p *Pool) delExpiredWorker(ctx context.Context) {
-	hb := time.NewTimer(p.options.ExpireWorkerCleanInterval)
+	hb := time.NewTicker(p.options.ExpireWorkerCleanInterval)
 
 	defer func() {
 		hb.Stop()
